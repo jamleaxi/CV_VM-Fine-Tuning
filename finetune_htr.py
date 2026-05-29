@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 import pandas as pd
 from PIL import Image
 import torch
@@ -15,6 +16,12 @@ print(f"Using device: {device}")
 BATCH_SIZE = 4            # Low batch size guarantees no 8GB Out-Of-Memory (OOM) errors
 IMAGE_RESOLUTION = 384    # TrOCR default resolution
 EPOCHS = 5                # Small epochs for a mini-lab demonstration
+
+# Use a versioned run directory so each fine-tuned model is preserved separately.
+RUN_VERSION = datetime.now().strftime("v%Y.%m.%d_%H%M%S")
+BASE_OUTPUT_DIR = "./final_custom_trocr_model"
+VERSIONED_OUTPUT_DIR = os.path.join(BASE_OUTPUT_DIR, RUN_VERSION)
+os.makedirs(VERSIONED_OUTPUT_DIR, exist_ok=True)
 
 # Load the standard Character Error Rate (CER) metric via Hugging Face Evaluate
 cer_metric = evaluate.load("cer")
@@ -81,12 +88,12 @@ model.config.vocab_size = model.config.decoder.vocab_size
 
 # 4. INSTANTIATE DATASETS
 # Split a 500-line CSV into 80% train / 20% test
-train_dataset = HandWrittenDataset(csv_file="train_metadata.csv", img_dir="data/train_crops", processor=processor)
-eval_dataset = HandWrittenDataset(csv_file="test_metadata.csv", img_dir="data/test_crops", processor=processor)
+train_dataset = HandWrittenDataset(csv_file="metadata/train_metadata.csv", img_dir="data/train_crops", processor=processor)
+eval_dataset = HandWrittenDataset(csv_file="metadata/test_metadata.csv", img_dir="data/test_crops", processor=processor)
 
 # 5. DEFINE TRAINING ARGUMENTS FOR 8GB VRAM
 training_args = Seq2SeqTrainingArguments(
-    output_dir="./trocr_handwriting_results",
+    output_dir=VERSIONED_OUTPUT_DIR,
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     predict_with_generate=True,
@@ -121,14 +128,40 @@ train_result = trainer.train()
 history = trainer.state.log_history
 
 # Save to a JSON file so students can parse it for graphs
-log_file_path = "./final_custom_trocr_model/training_metrics.json"
+log_file_path = os.path.join(VERSIONED_OUTPUT_DIR, "training_metrics.json")
 with open(log_file_path, "w") as f:
     json.dump(history, f, indent=4)
 
 print(f"Training metrics history successfully saved to {log_file_path}!")
 
+# Save the final evaluation results and the CER history to a versioned JSON file.
+evaluation_results = trainer.evaluate()
+cer_history = [
+    {
+        "epoch": entry.get("epoch"),
+        "eval_cer": entry.get("eval_cer"),
+    }
+    for entry in history
+    if "eval_cer" in entry
+]
+
+cer_results_path = os.path.join(VERSIONED_OUTPUT_DIR, "cer_results.json")
+with open(cer_results_path, "w") as f:
+    json.dump(
+        {
+            "run_version": RUN_VERSION,
+            "output_dir": VERSIONED_OUTPUT_DIR,
+            "final_evaluation": evaluation_results,
+            "cer_history": cer_history,
+        },
+        f,
+        indent=4,
+    )
+
+print(f"CER results successfully saved to {cer_results_path}!")
+
 
 # 8. SAVE CHECKPOINT
-model.save_pretrained("./final_custom_trocr_model")
-processor.save_pretrained("./final_custom_trocr_model")
-print("Model fine-tuned successfully and saved locally!")
+model.save_pretrained(VERSIONED_OUTPUT_DIR)
+processor.save_pretrained(VERSIONED_OUTPUT_DIR)
+print(f"Model fine-tuned successfully and saved locally to {VERSIONED_OUTPUT_DIR}!")
