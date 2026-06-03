@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import numpy as np
 import pandas as pd
 from PIL import Image
 import torch
@@ -60,6 +61,13 @@ class HandWrittenDataset(Dataset):
 def compute_metrics(pred):
     labels_ids = pred.label_ids
     pred_ids = pred.predictions
+
+    # Unwrap tuple output (e.g., when model returns extra tensors alongside sequences)
+    if isinstance(pred_ids, tuple):
+        pred_ids = pred_ids[0]
+
+    # Replace any negative values (e.g., -100 padding) before decoding to avoid OverflowError
+    pred_ids = np.where(pred_ids >= 0, pred_ids, processor.tokenizer.pad_token_id)
 
     # 1. Decode predicted token IDs back into text strings
     pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)
