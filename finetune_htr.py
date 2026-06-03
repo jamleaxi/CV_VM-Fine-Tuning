@@ -97,7 +97,7 @@ training_args = Seq2SeqTrainingArguments(
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE,
     predict_with_generate=True,
-    evaluation_strategy="epoch",
+    eval_strategy="epoch",
     save_strategy="epoch",
     learning_rate=5e-5,
     num_train_epochs=EPOCHS,
@@ -111,7 +111,7 @@ training_args = Seq2SeqTrainingArguments(
 # 6. INITIALIZE TRAINING LOOP
 trainer = Seq2SeqTrainer(
     model=model,
-    tokenizer=processor.feature_extractor,
+    processing_class=processor,
     args=training_args,
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,

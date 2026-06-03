@@ -6,3 +6,4 @@ pillow
 evaluate
 jiwer
 sentencepiece
+protobuf

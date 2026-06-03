@@ -79,89 +79,88 @@ def compute_metrics(pred):
 # trocr-small uses a tiny DeiT encoder and a tiny UniLM text decoder (~60M total parameters)
 model_checkpoint = "microsoft/trocr-small-handwritten"
 processor = TrOCRProcessor.from_pretrained(model_checkpoint)
-model = VisionEncoderDecoderModel.from_pretrained(model_checkpoint)
 
-# Configure vocabulary token settings necessary for sequence generation
-model.config.decoder_start_token_id = processor.tokenizer.cls_token_id
-model.config.pad_token_id = processor.tokenizer.pad_token_id
-model.config.vocab_size = model.config.decoder.vocab_size
+if __name__ == '__main__':
+    model = VisionEncoderDecoderModel.from_pretrained(model_checkpoint)
 
-# 4. INSTANTIATE DATASETS
-# Split a 105-line CSV into 80% train / 20% test
-train_dataset = HandWrittenDataset(csv_file="metadata/ceb_train_metadata.csv", img_dir="data/ceb_train_crops", processor=processor)
-eval_dataset = HandWrittenDataset(csv_file="metadata/ceb_test_metadata.csv", img_dir="data/ceb_test_crops", processor=processor)
+    # Configure vocabulary token settings necessary for sequence generation
+    model.config.decoder_start_token_id = processor.tokenizer.cls_token_id
+    model.config.pad_token_id = processor.tokenizer.pad_token_id
+    model.config.vocab_size = model.config.decoder.vocab_size
 
-# 5. DEFINE TRAINING ARGUMENTS FOR 8GB VRAM
-training_args = Seq2SeqTrainingArguments(
-    output_dir=VERSIONED_OUTPUT_DIR,
-    per_device_train_batch_size=BATCH_SIZE,
-    per_device_eval_batch_size=BATCH_SIZE,
-    predict_with_generate=True,
-    evaluation_strategy="epoch",
-    save_strategy="epoch",
-    learning_rate=5e-5,
-    num_train_epochs=EPOCHS,
-    logging_steps=10,
-    fp16=torch.cuda.is_available(), # Crucial: Uses half-precision execution to slash VRAM usage by ~50%
-    dataloader_num_workers=2,       # Keeps CPU data pipelining efficient without choke
-    report_to="none"                # Shuts off third-party logging overheads
-)
+    # 4. INSTANTIATE DATASETS
+    # Split a 105-line CSV into 80% train / 20% test
+    train_dataset = HandWrittenDataset(csv_file="metadata/ceb_train_metadata.csv", img_dir="data/ceb_train_crops", processor=processor)
+    eval_dataset = HandWrittenDataset(csv_file="metadata/ceb_test_metadata.csv", img_dir="data/ceb_test_crops", processor=processor)
 
-
-# 6. INITIALIZE TRAINING LOOP
-trainer = Seq2SeqTrainer(
-    model=model,
-    tokenizer=processor.feature_extractor,
-    args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=eval_dataset,
-    compute_metrics=compute_metrics, 
-)
-
-
-# 7. EXECUTE FINE-TUNING
-print("--- Starting Fine-Tuning Execution ---")
-train_result = trainer.train()
-
-# --- SAVE THE EVALUATION METRICS HISTOGRAM ---
-# This extracts the logs (loss, learning rate, CER per epoch)
-history = trainer.state.log_history
-
-# Save to a JSON file so students can parse it for graphs
-log_file_path = os.path.join(VERSIONED_OUTPUT_DIR, "training_metrics.json")
-with open(log_file_path, "w") as f:
-    json.dump(history, f, indent=4)
-
-print(f"Training metrics history successfully saved to {log_file_path}!")
-
-# Save the final evaluation results and the CER history to a versioned JSON file.
-evaluation_results = trainer.evaluate()
-cer_history = [
-    {
-        "epoch": entry.get("epoch"),
-        "eval_cer": entry.get("eval_cer"),
-    }
-    for entry in history
-    if "eval_cer" in entry
-]
-
-cer_results_path = os.path.join(VERSIONED_OUTPUT_DIR, "cer_results.json")
-with open(cer_results_path, "w") as f:
-    json.dump(
-        {
-            "run_version": RUN_VERSION,
-            "output_dir": VERSIONED_OUTPUT_DIR,
-            "final_evaluation": evaluation_results,
-            "cer_history": cer_history,
-        },
-        f,
-        indent=4,
+    # 5. DEFINE TRAINING ARGUMENTS FOR 8GB VRAM
+    training_args = Seq2SeqTrainingArguments(
+        output_dir=VERSIONED_OUTPUT_DIR,
+        per_device_train_batch_size=BATCH_SIZE,
+        per_device_eval_batch_size=BATCH_SIZE,
+        predict_with_generate=True,
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        learning_rate=5e-5,
+        num_train_epochs=EPOCHS,
+        logging_steps=10,
+        fp16=torch.cuda.is_available(), # Crucial: Uses half-precision execution to slash VRAM usage by ~50%
+        dataloader_num_workers=2,       # Keeps CPU data pipelining efficient without choke
+        report_to="none"                # Shuts off third-party logging overheads
     )
 
-print(f"CER results successfully saved to {cer_results_path}!")
+    # 6. INITIALIZE TRAINING LOOP
+    trainer = Seq2SeqTrainer(
+        model=model,
+        processing_class=processor,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        compute_metrics=compute_metrics,
+    )
 
+    # 7. EXECUTE FINE-TUNING
+    print("--- Starting Fine-Tuning Execution ---")
+    train_result = trainer.train()
 
-# 8. SAVE CHECKPOINT
-model.save_pretrained(VERSIONED_OUTPUT_DIR)
-processor.save_pretrained(VERSIONED_OUTPUT_DIR)
-print(f"Model fine-tuned successfully and saved locally to {VERSIONED_OUTPUT_DIR}!")
+    # --- SAVE THE EVALUATION METRICS HISTOGRAM ---
+    # This extracts the logs (loss, learning rate, CER per epoch)
+    history = trainer.state.log_history
+
+    # Save to a JSON file so students can parse it for graphs
+    log_file_path = os.path.join(VERSIONED_OUTPUT_DIR, "training_metrics.json")
+    with open(log_file_path, "w") as f:
+        json.dump(history, f, indent=4)
+
+    print(f"Training metrics history successfully saved to {log_file_path}!")
+
+    # Save the final evaluation results and the CER history to a versioned JSON file.
+    evaluation_results = trainer.evaluate()
+    cer_history = [
+        {
+            "epoch": entry.get("epoch"),
+            "eval_cer": entry.get("eval_cer"),
+        }
+        for entry in history
+        if "eval_cer" in entry
+    ]
+
+    cer_results_path = os.path.join(VERSIONED_OUTPUT_DIR, "cer_results.json")
+    with open(cer_results_path, "w") as f:
+        json.dump(
+            {
+                "run_version": RUN_VERSION,
+                "output_dir": VERSIONED_OUTPUT_DIR,
+                "final_evaluation": evaluation_results,
+                "cer_history": cer_history,
+            },
+            f,
+            indent=4,
+        )
+
+    print(f"CER results successfully saved to {cer_results_path}!")
+
+    # 8. SAVE CHECKPOINT
+    model.save_pretrained(VERSIONED_OUTPUT_DIR)
+    processor.save_pretrained(VERSIONED_OUTPUT_DIR)
+    print(f"Model fine-tuned successfully and saved locally to {VERSIONED_OUTPUT_DIR}!")
