@@ -20,7 +20,7 @@ EPOCHS = 5                # Small epochs for a mini-lab demonstration
 
 # Use a versioned run directory so each fine-tuned model is preserved separately.
 RUN_VERSION = datetime.now().strftime("v%Y.%m.%d_%H%M%S")
-BASE_OUTPUT_DIR = "./final_custom_trocr_model"
+BASE_OUTPUT_DIR = "./final_custom_trocr_model_ceb"
 VERSIONED_OUTPUT_DIR = os.path.join(BASE_OUTPUT_DIR, RUN_VERSION)
 os.makedirs(VERSIONED_OUTPUT_DIR, exist_ok=True)
 

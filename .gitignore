@@ -9,3 +9,5 @@ __pycache__/
 venv/
 env/
 .ipynb_checkpoints/
+final/custom/trocr/model/
+final/custom/trocr/model_ceb/
